@@ -33,28 +33,24 @@ func NewConnectionForm(connectionPages *models.ConnectionPages) *ConnectionForm 
 
 	saveButton := tview.NewButton("[yellow]F1 [dark]Save")
 	saveButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
-	saveButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(saveButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	testButton := tview.NewButton("[yellow]F2 [dark]Test")
 	testButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
-	testButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(testButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	connectButton := tview.NewButton("[yellow]F3 [dark]Connect")
 	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimaryTextColor))
-	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	cancelButton := tview.NewButton("[yellow]Esc [dark]Cancel")
 	cancelButton.SetStyle(tcell.StyleDefault.Background(tcell.Color(app.Styles.PrimaryTextColor)))
-	cancelButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(cancelButton, 0, 1, false)
 

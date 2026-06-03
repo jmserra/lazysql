@@ -32,35 +32,30 @@ func NewConnectionSelection(connectionForm *ConnectionForm, connectionPages *mod
 
 	newButton := tview.NewButton("[yellow]N[dark]ew")
 	newButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	newButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(newButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	connectButton := tview.NewButton("[yellow]C[dark]onnect")
 	connectButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	connectButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(connectButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	editButton := tview.NewButton("[yellow]E[dark]dit")
 	editButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	editButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(editButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	deleteButton := tview.NewButton("[yellow]D[dark]elete")
 	deleteButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	deleteButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(deleteButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
 
 	quitButton := tview.NewButton("[yellow]Q[dark]uit")
 	quitButton.SetStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor))
-	quitButton.SetBorder(true)
 
 	buttonsWrapper.AddItem(quitButton, 0, 1, false)
 	buttonsWrapper.AddItem(nil, 1, 0, false)
@@ -258,7 +253,12 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 
 	newHome := NewHomePage(connection, newDBDriver)
 	newHome.Tree.SetCurrentNode(newHome.Tree.GetRoot())
-	newHome.Tree.Wrapper.SetTitle(connection.Name)
+
+	treeTitle := connection.Name
+	if connection.ReadOnly {
+		treeTitle += " [READ-ONLY]"
+	}
+	newHome.Tree.Wrapper.SetTitle(treeTitle)
 
 	mainPages.AddAndSwitchToPage(connection.Name, newHome, true)
 	App.SetFocus(newHome.Tree)

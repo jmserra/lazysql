@@ -65,6 +65,17 @@ func init() {
 	}
 
 	tview.Styles = Styles.Theme
+
+	// By default tview draws the border of a focused box with double-line
+	// runes (╔═╗║), which reads as a thick/doubled border. Use the same
+	// single-line runes for focused boxes so the active pane shows a clean
+	// single border.
+	tview.Borders.HorizontalFocus = tview.Borders.Horizontal
+	tview.Borders.VerticalFocus = tview.Borders.Vertical
+	tview.Borders.TopLeftFocus = tview.Borders.TopLeft
+	tview.Borders.TopRightFocus = tview.Borders.TopRight
+	tview.Borders.BottomLeftFocus = tview.Borders.BottomLeft
+	tview.Borders.BottomRightFocus = tview.Borders.BottomRight
 }
 
 // Context returns the application context.

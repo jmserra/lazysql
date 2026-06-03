@@ -89,17 +89,19 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 
 	go home.subscribeToTreeChanges()
 
-	leftWrapper.SetBorderColor(app.Styles.InverseTextColor)
 	leftWrapper.AddItem(tree.Wrapper, 0, 1, true)
 
+	tree.Wrapper.SetBorderColor(app.Styles.PrimaryTextColor)
+
 	if connection.ReadOnly {
-		leftWrapper.SetTitle(" [READ-ONLY] ")
-		leftWrapper.SetTitleColor(tcell.ColorLightBlue)
-		leftWrapper.SetBorder(true)
+		rightWrapper.SetTitle(" [READ-ONLY] ")
+		rightWrapper.SetTitleColor(tcell.ColorLightBlue)
 	}
 
-	rightWrapper.SetBorderColor(app.Styles.InverseTextColor)
-	rightWrapper.SetBorder(true)
+	// Borders are drawn only on the focused pane (see focusLeftWrapper /
+	// focusRightWrapper). The tree starts focused, so the right pane begins
+	// without a border.
+	rightWrapper.SetBorderColor(app.Styles.PrimaryTextColor)
 	rightWrapper.SetDirection(tview.FlexColumnCSS)
 	rightWrapper.SetInputCapture(home.rightWrapperInputCapture)
 	rightWrapper.AddItem(tabbedPane.HeaderContainer, 1, 0, false)
@@ -284,8 +286,8 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 func (home *Home) focusRightWrapper() {
 	home.Tree.RemoveHighlight()
 
-	home.RightWrapper.SetBorderColor(app.Styles.PrimaryTextColor)
-	home.LeftWrapper.SetBorderColor(app.Styles.InverseTextColor)
+	home.RightWrapper.SetBorder(true)
+	home.Tree.Wrapper.SetBorder(false)
 	home.TabbedPane.Highlight()
 	tab := home.TabbedPane.GetCurrentTab()
 
@@ -330,8 +332,8 @@ func (home *Home) focusTab(tab *Tab) {
 func (home *Home) focusLeftWrapper() {
 	home.Tree.Highlight()
 
-	home.RightWrapper.SetBorderColor(app.Styles.InverseTextColor)
-	home.LeftWrapper.SetBorderColor(app.Styles.PrimaryTextColor)
+	home.RightWrapper.SetBorder(false)
+	home.Tree.Wrapper.SetBorder(true)
 
 	tab := home.TabbedPane.GetCurrentTab()
 

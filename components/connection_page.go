@@ -9,7 +9,6 @@ import (
 func NewConnectionPages() *models.ConnectionPages {
 	// Create pages component
 	pages := tview.NewPages()
-	pages.SetBorder(true)
 
 	// Create a grid for both small and large screens
 	smallScreenGrid := tview.NewGrid().
