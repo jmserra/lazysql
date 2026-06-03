@@ -134,7 +134,12 @@ func NewResultsTable(listOfDBChanges *[]models.DBDMLChange, tree *Tree, dbdriver
 	table.Page.AddPage(pageNameSidebar, table.Sidebar, false, false)
 
 	table.SetSelectable(true, true)
-	table.SetBorders(true)
+	// Use column separators instead of full cell borders. With full borders
+	// tview paints the selection highlight over the border box around the
+	// cell (a yellow ring); without them the highlight covers just the cell
+	// content.
+	table.SetBorders(false)
+	table.SetSeparator(tview.Borders.Vertical)
 	table.SetFixed(1, 0)
 	table.SetInputCapture(table.tableInputCapture)
 	table.SetSelectedStyle(tcell.StyleDefault.Background(app.Styles.SecondaryTextColor).Foreground(tview.Styles.ContrastSecondaryTextColor))
