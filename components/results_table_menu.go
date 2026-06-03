@@ -36,8 +36,6 @@ func NewResultsTableMenu() *ResultsTableMenu {
 		state: state,
 	}
 
-	menu.SetBorder(true)
-
 	for i, item := range menuItems {
 		separator := " | "
 		if i == len(menuItems)-1 {

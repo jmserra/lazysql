@@ -164,16 +164,16 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 	table.Filter = filter
 
 	if App.Config().SidebarOverlay {
-		table.Wrapper.AddItem(menu, 3, 0, false)
-		table.Wrapper.AddItem(filter, 3, 0, false)
+		table.Wrapper.AddItem(menu, 1, 0, false)
+		table.Wrapper.AddItem(filter, 1, 0, false)
 		table.Wrapper.AddItem(table, 0, 1, true)
-		table.Wrapper.AddItem(table.Pagination, 3, 0, false)
+		table.Wrapper.AddItem(table.Pagination, 1, 0, false)
 	} else {
 		tableContainer := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
-		tableContainer.AddItem(menu, 3, 0, false)
-		tableContainer.AddItem(filter, 3, 0, false)
+		tableContainer.AddItem(menu, 1, 0, false)
+		tableContainer.AddItem(filter, 1, 0, false)
 		tableContainer.AddItem(table, 0, 1, true)
-		tableContainer.AddItem(table.Pagination, 3, 0, false)
+		tableContainer.AddItem(table.Pagination, 1, 0, false)
 
 		table.SidebarContainer.AddItem(tableContainer, 0, 4, true)
 
@@ -206,7 +206,7 @@ func (table *ResultsTable) WithEditor() *ResultsTable {
 
 	tableWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	tableWrapper.AddItem(table, 0, 1, false)
-	tableWrapper.AddItem(table.Pagination, 3, 0, false)
+	tableWrapper.AddItem(table.Pagination, 1, 0, false)
 
 	resultsInfoWrapper := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
 	resultsInfoText := tview.NewTextView()

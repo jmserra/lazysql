@@ -24,7 +24,6 @@ func NewResultsFilter() *ResultsTableFilter {
 		Input: tview.NewInputField(),
 		Label: tview.NewTextView(),
 	}
-	recordsFilter.SetBorder(true)
 	recordsFilter.SetDirection(tview.FlexRowCSS)
 	recordsFilter.SetTitleAlign(tview.AlignCenter)
 	recordsFilter.SetBorderPadding(0, 0, 1, 1)
