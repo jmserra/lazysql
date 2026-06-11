@@ -33,20 +33,48 @@ type TabbedPaneState struct {
 type TabbedPane struct {
 	*tview.Pages
 	HeaderContainer *tview.Flex
+	tabsFlex        *tview.Flex
+	mountedMenu     *ResultsTableMenu
 	state           *TabbedPaneState
 }
 
 func NewTabbedPane() *TabbedPane {
 	container := tview.NewFlex()
-	container.SetBorderPadding(0, 0, 1, 1)
+	container.SetBorderPadding(0, 0, 0, 0)
+
+	// Tab headers live in a flex that grows to fill the row, so the current
+	// tab's menu (added by mountCurrentMenu) sits right-aligned beside them.
+	tabsFlex := tview.NewFlex()
+	container.AddItem(tabsFlex, 0, 1, false)
 
 	tabbedPane := &TabbedPane{
 		Pages:           tview.NewPages(),
 		HeaderContainer: container,
+		tabsFlex:        tabsFlex,
 		state:           &TabbedPaneState{},
 	}
 
 	return tabbedPane
+}
+
+// mountCurrentMenu shows the current tab's results menu right-aligned on the
+// header row. Tabs without a menu (e.g. the editor tab or the query-history
+// modal) simply leave that area empty.
+func (t *TabbedPane) mountCurrentMenu() {
+	if t.mountedMenu != nil {
+		t.HeaderContainer.RemoveItem(t.mountedMenu)
+		t.mountedMenu = nil
+	}
+
+	tab := t.state.CurrentTab
+	if tab == nil {
+		return
+	}
+
+	if table, ok := tab.Content.(*ResultsTable); ok && table.Menu != nil {
+		t.HeaderContainer.AddItem(table.Menu, table.Menu.Width, 0, false)
+		t.mountedMenu = table.Menu
+	}
 }
 
 func (t *TabbedPane) AppendTab(name string, content TabContent, reference string) {
@@ -74,9 +102,10 @@ func (t *TabbedPane) AppendTab(name string, content TabContent, reference string
 		t.state.CurrentTab = newTab
 	}
 
-	t.HeaderContainer.AddItem(newTab.Header, len(newTab.Name)+2, 0, false)
+	t.tabsFlex.AddItem(newTab.Header, len(newTab.Name)+2, 0, false)
 
 	t.HighlightTabHeader(newTab)
+	t.mountCurrentMenu()
 
 	t.AddAndSwitchToPage(reference, content.GetPrimitive(), true)
 }
@@ -85,7 +114,7 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 	currentTab := t.state.CurrentTab
 
 	if currentTab != nil {
-		t.HeaderContainer.RemoveItem(currentTab.Header)
+		t.tabsFlex.RemoveItem(currentTab.Header)
 		t.RemovePage(currentTab.Reference)
 
 		t.state.Length--
@@ -94,6 +123,7 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 			t.state.FirstTab = nil
 			t.state.LastTab = nil
 			t.state.CurrentTab = nil
+			t.mountCurrentMenu()
 			return nil
 		}
 
@@ -126,6 +156,7 @@ func (t *TabbedPane) RemoveCurrentTab() *Tab {
 func (t *TabbedPane) SetCurrentTab(tab *Tab) *Tab {
 	t.state.CurrentTab = tab
 	t.HighlightTabHeader(tab)
+	t.mountCurrentMenu()
 
 	t.SwitchToPage(tab.Reference)
 

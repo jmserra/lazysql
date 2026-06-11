@@ -190,51 +190,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		previouslyFocusedNode = node
 	})
 
-	tree.SetSelectedFunc(func(node *tview.TreeNode) {
-		nodeData := tree.GetTreeNodeData(node)
-
-		switch nodeData.Type {
-		case NodeTypeSection:
-			node.SetExpanded(!node.IsExpanded())
-		case NodeTypeDatabase:
-			if node.IsExpanded() {
-				node.SetExpanded(false)
-			} else {
-				tree.SetSelectedDatabase(nodeData.Database)
-				node.SetExpanded(true)
-			}
-		case NodeTypeTable:
-			tree.SetSelectedDatabase(nodeData.Database)
-			if nodeData.Schema == "" {
-				tree.SetSelectedTable(nodeData.Name)
-			} else {
-				tree.SetSelectedTable(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
-			}
-		case NodeTypeProcedure:
-			tree.SetSelectedDatabase(nodeData.Database)
-			if nodeData.Schema == "" {
-				tree.SetSelectedProcedure(nodeData.Name)
-			} else {
-				tree.SetSelectedProcedure(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
-			}
-		case NodeTypeFunction:
-			tree.SetSelectedDatabase(nodeData.Database)
-			if nodeData.Schema == "" {
-				tree.SetSelectedUserDefinedFunction(nodeData.Name)
-			} else {
-				tree.SetSelectedUserDefinedFunction(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
-			}
-		case NodeTypeView:
-			tree.SetSelectedDatabase(nodeData.Database)
-			if nodeData.Schema == "" {
-				tree.SetSelectedView(nodeData.Name)
-			} else {
-				tree.SetSelectedView(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
-			}
-		default:
-			break
-		}
-	})
+	tree.SetSelectedFunc(tree.selectNode)
 
 	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		command := app.Keymaps.Group(app.TreeGroup).Resolve(event)
@@ -291,11 +247,14 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 
 			if filterText == "" {
 				tree.ClearSearch()
-			} else {
-				if len(tree.state.searchFoundNodes) > 0 {
-					tree.FoundNodeCountInput.SetText(fmt.Sprintf("[1/%d]", len(tree.state.searchFoundNodes)))
-				}
-				tree.SetBorderPadding(1, 0, 0, 0)
+			} else if len(tree.state.searchFoundNodes) > 0 {
+				// Open the best match directly so the user doesn't have to press
+				// Enter a second time on the tree. Opening the table moves focus
+				// to it (via showTable), so leave filtering mode without grabbing
+				// focus back to the tree.
+				tree.SetIsFiltering(false)
+				tree.selectNode(tree.GetCurrentNode())
+				return
 			}
 
 		case tcell.KeyEscape:
@@ -343,14 +302,65 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 
 	tree.Wrapper.SetDirection(tview.FlexRow)
 	tree.Wrapper.SetBorder(false)
-	tree.Wrapper.SetBorderPadding(0, 0, 1, 1)
+	tree.Wrapper.SetBorderPadding(0, 0, 0, 0)
 	tree.Wrapper.SetTitleColor(app.Styles.PrimaryTextColor)
 
 	tree.Wrapper.AddItem(tree.Filter, 1, 0, false)
-	tree.Wrapper.AddItem(tree.FoundNodeCountInput, 1, 0, false)
 	tree.Wrapper.AddItem(tree, 0, 1, true)
 
 	return tree
+}
+
+// selectNode performs the action for a tree node: expanding sections/databases
+// or publishing the selected table/procedure/function/view so it opens.
+func (tree *Tree) selectNode(node *tview.TreeNode) {
+	if node == nil {
+		return
+	}
+
+	nodeData := tree.GetTreeNodeData(node)
+
+	switch nodeData.Type {
+	case NodeTypeSection:
+		node.SetExpanded(!node.IsExpanded())
+	case NodeTypeDatabase:
+		if node.IsExpanded() {
+			node.SetExpanded(false)
+		} else {
+			tree.SetSelectedDatabase(nodeData.Database)
+			node.SetExpanded(true)
+		}
+	case NodeTypeTable:
+		tree.SetSelectedDatabase(nodeData.Database)
+		if nodeData.Schema == "" {
+			tree.SetSelectedTable(nodeData.Name)
+		} else {
+			tree.SetSelectedTable(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+		}
+	case NodeTypeProcedure:
+		tree.SetSelectedDatabase(nodeData.Database)
+		if nodeData.Schema == "" {
+			tree.SetSelectedProcedure(nodeData.Name)
+		} else {
+			tree.SetSelectedProcedure(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+		}
+	case NodeTypeFunction:
+		tree.SetSelectedDatabase(nodeData.Database)
+		if nodeData.Schema == "" {
+			tree.SetSelectedUserDefinedFunction(nodeData.Name)
+		} else {
+			tree.SetSelectedUserDefinedFunction(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+		}
+	case NodeTypeView:
+		tree.SetSelectedDatabase(nodeData.Database)
+		if nodeData.Schema == "" {
+			tree.SetSelectedView(nodeData.Name)
+		} else {
+			tree.SetSelectedView(fmt.Sprintf("%s.%s", nodeData.Schema, nodeData.Name))
+		}
+	default:
+		break
+	}
 }
 
 func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.TreeNode, defaultExpanded bool) {

@@ -2,7 +2,9 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/jorgerojas26/lazysql/app"
@@ -13,9 +15,12 @@ type ResultsTableMenuState struct {
 }
 
 type ResultsTableMenu struct {
-	*tview.Flex
-	state     *ResultsTableMenuState
-	MenuItems []*tview.TextView
+	*tview.TextView
+	state   *ResultsTableMenuState
+	focused bool
+	// Width is the rendered horizontal size of the menu, used to right-align it
+	// on the tab header row.
+	Width int
 }
 
 var menuItems = []string{
@@ -31,40 +36,67 @@ func NewResultsTableMenu() *ResultsTableMenu {
 		SelectedOption: 1,
 	}
 
+	textView := tview.NewTextView()
+	textView.SetDynamicColors(true)
+	textView.SetTextAlign(tview.AlignRight)
+
 	menu := &ResultsTableMenu{
-		Flex:  tview.NewFlex(),
-		state: state,
+		TextView: textView,
+		state:    state,
 	}
 
+	// Reserve a stable width: every label single-space separated, plus the
+	// " (n)" shown on the one active item. Exactly one item is always active,
+	// so the rendered width is constant and the right-aligned menu never shifts.
+	width := len(" (0)")
 	for i, item := range menuItems {
-		separator := " | "
-		if i == len(menuItems)-1 {
-			separator = ""
+		if i > 0 {
+			width++ // single space separator
 		}
-
-		text := fmt.Sprintf("%s [%d] %s", item, i+1, separator)
-		textview := tview.NewTextView().SetText(text)
-
-		if i == 0 {
-			textview.SetTextColor(app.Styles.PrimaryTextColor)
-		}
-
-		size := 15
-
-		switch item {
-		case menuConstraints:
-			size = 19
-		case menuForeignKeys:
-			size = 20
-		case menuIndexes:
-			size = 16
-		}
-
-		menu.MenuItems = append(menu.MenuItems, textview)
-		menu.AddItem(textview, size, 0, false)
+		width += len(item)
 	}
+	menu.Width = width
+
+	menu.render()
 
 	return menu
+}
+
+// render rebuilds the menu line: only the active option shows its "(n)" number,
+// items are separated by a single space, and colors reflect the focus state.
+func (menu *ResultsTableMenu) render() {
+	parts := make([]string, len(menuItems))
+
+	for i, item := range menuItems {
+		label := item
+		if i+1 == menu.state.SelectedOption {
+			label = fmt.Sprintf("%s (%d)", item, i+1)
+		}
+
+		var color tcell.Color
+		switch {
+		case i+1 == menu.state.SelectedOption:
+			// Active view is highlighted in yellow, like the active tab name.
+			color = app.Styles.SecondaryTextColor
+		case !menu.focused:
+			color = app.Styles.InverseTextColor
+		default:
+			color = app.Styles.PrimaryTextColor
+		}
+
+		parts[i] = fmt.Sprintf("[%s]%s", colorTag(color), label)
+	}
+
+	menu.SetText(strings.Join(parts, " "))
+}
+
+// colorTag converts a color into a tview dynamic-color tag value, mapping the
+// default color to "-" (which tview resolves to the theme default).
+func colorTag(c tcell.Color) string {
+	if hex := c.Hex(); hex >= 0 {
+		return fmt.Sprintf("#%06x", hex)
+	}
+	return "-"
 }
 
 // Getters and Setters
@@ -74,35 +106,17 @@ func (menu *ResultsTableMenu) GetSelectedOption() int {
 
 func (menu *ResultsTableMenu) SetSelectedOption(option int) {
 	if menu.state.SelectedOption != option {
-
 		menu.state.SelectedOption = option
-
-		itemCount := menu.GetItemCount()
-
-		for i := 0; i < itemCount; i++ {
-			menu.GetItem(i).(*tview.TextView).SetTextColor(app.Styles.PrimaryTextColor)
-		}
-
-		menu.GetItem(option - 1).(*tview.TextView).SetTextColor(app.Styles.SecondaryTextColor)
+		menu.render()
 	}
 }
 
 func (menu *ResultsTableMenu) SetBlur() {
-	menu.SetBorderColor(app.Styles.InverseTextColor)
-
-	for _, item := range menu.MenuItems {
-		item.SetTextColor(app.Styles.InverseTextColor)
-	}
+	menu.focused = false
+	menu.render()
 }
 
 func (menu *ResultsTableMenu) SetFocus() {
-	menu.SetBorderColor(app.Styles.PrimaryTextColor)
-
-	for i, item := range menu.MenuItems {
-		if i+1 == menu.GetSelectedOption() {
-			item.SetTextColor(app.Styles.SecondaryTextColor)
-		} else {
-			item.SetTextColor(app.Styles.PrimaryTextColor)
-		}
-	}
+	menu.focused = true
+	menu.render()
 }

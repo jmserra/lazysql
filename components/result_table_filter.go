@@ -26,7 +26,7 @@ func NewResultsFilter() *ResultsTableFilter {
 	}
 	recordsFilter.SetDirection(tview.FlexRowCSS)
 	recordsFilter.SetTitleAlign(tview.AlignCenter)
-	recordsFilter.SetBorderPadding(0, 0, 1, 1)
+	recordsFilter.SetBorderPadding(0, 0, 0, 0)
 
 	recordsFilter.Label.SetTextColor(app.Styles.TertiaryTextColor)
 	recordsFilter.Label.SetText("WHERE")

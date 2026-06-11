@@ -163,14 +163,14 @@ func (table *ResultsTable) WithFilter() *ResultsTable {
 	table.Menu = menu
 	table.Filter = filter
 
+	// The menu (Records/Columns/…) is mounted on the tab header row by the
+	// TabbedPane, so it is no longer part of the table body layout.
 	if App.Config().SidebarOverlay {
-		table.Wrapper.AddItem(menu, 1, 0, false)
 		table.Wrapper.AddItem(filter, 1, 0, false)
 		table.Wrapper.AddItem(table, 0, 1, true)
 		table.Wrapper.AddItem(table.Pagination, 1, 0, false)
 	} else {
 		tableContainer := tview.NewFlex().SetDirection(tview.FlexColumnCSS)
-		tableContainer.AddItem(menu, 1, 0, false)
 		tableContainer.AddItem(filter, 1, 0, false)
 		tableContainer.AddItem(table, 0, 1, true)
 		tableContainer.AddItem(table.Pagination, 1, 0, false)

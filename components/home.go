@@ -217,13 +217,8 @@ func (home *Home) showTable(databaseName, tableName string) {
 	table.FetchRecords(func() {
 		home.focusLeftWrapper()
 	}, func() {
-		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
-			records := table.GetRecords()
-			if len(records) > 1 {
-				table.ShowSidebar(true)
-			}
-		}
-
+		// The sidebar is opened on demand (toggle with the sidebar key), not
+		// automatically when a table loads.
 		if table.state.error == "" {
 			if !home.treePinned && home.leftWrapperVisible {
 				home.toggleLeftWrapper()
@@ -267,13 +262,8 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 			return
 		}
 
-		if !app.App.Config().DisableSidebar && !table.GetShowSidebar() {
-			records := table.GetRecords()
-			if len(records) > 1 {
-				table.ShowSidebar(true)
-			}
-		}
-
+		// The sidebar is opened on demand (toggle with the sidebar key), not
+		// automatically when a table loads.
 		if !home.treePinned && home.leftWrapperVisible {
 			home.toggleLeftWrapper()
 		}
