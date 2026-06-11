@@ -308,6 +308,9 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	})
 
 	tree.Filter.SetChangedFunc(func(text string) {
+		// search() runs off the main goroutine: it calls App.Draw() (which is a
+		// queued update) and would deadlock the event loop if invoked from this
+		// input handler, which already runs on the main goroutine.
 		go tree.search(text)
 	})
 
@@ -339,7 +342,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	tree.FoundNodeCountInput.SetFieldStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.PrimaryTextColor))
 
 	tree.Wrapper.SetDirection(tview.FlexRow)
-	tree.Wrapper.SetBorder(true)
+	tree.Wrapper.SetBorder(false)
 	tree.Wrapper.SetBorderPadding(0, 0, 1, 1)
 	tree.Wrapper.SetTitleColor(app.Styles.PrimaryTextColor)
 
@@ -686,16 +689,22 @@ func (tree *Tree) search(searchText string) {
 // full list.
 func (tree *Tree) filterFlat(lowerSearchText string) {
 	rootNode := tree.GetRoot()
-	rootNode.ClearChildren()
 
 	if lowerSearchText == "" {
-		for _, node := range tree.state.flatNodes {
-			rootNode.AddChild(node)
-		}
-		if children := rootNode.GetChildren(); len(children) > 0 {
-			tree.SetCurrentNode(children[0])
-		}
-		App.Draw()
+		// Restructure the tree's children and redraw on the main goroutine.
+		// Mutating the children off-thread races the event loop's draw and
+		// panics with a nil child. filterFlat is only ever reached from a
+		// background goroutine (see the search callers), so QueueUpdateDraw
+		// here cannot deadlock the main loop.
+		App.QueueUpdateDraw(func() {
+			rootNode.ClearChildren()
+			for _, node := range tree.state.flatNodes {
+				rootNode.AddChild(node)
+			}
+			if children := rootNode.GetChildren(); len(children) > 0 {
+				tree.SetCurrentNode(children[0])
+			}
+		})
 		return
 	}
 
@@ -720,18 +729,20 @@ func (tree *Tree) filterFlat(lowerSearchText string) {
 		return rankedNodes[i].rank < rankedNodes[j].rank
 	})
 
-	for _, rn := range rankedNodes {
-		rootNode.AddChild(rn.node)
-		tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, rn.node)
-	}
+	// Restructure the children and redraw on the main goroutine (see above).
+	App.QueueUpdateDraw(func() {
+		rootNode.ClearChildren()
+		for _, rn := range rankedNodes {
+			rootNode.AddChild(rn.node)
+			tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, rn.node)
+		}
 
-	if len(tree.state.searchFoundNodes) > 0 {
-		bestNode := tree.state.searchFoundNodes[0]
-		tree.SetCurrentNode(bestNode)
-		tree.state.currentFocusFoundNode = bestNode
-	}
-
-	App.Draw()
+		if len(tree.state.searchFoundNodes) > 0 {
+			bestNode := tree.state.searchFoundNodes[0]
+			tree.SetCurrentNode(bestNode)
+			tree.state.currentFocusFoundNode = bestNode
+		}
+	})
 }
 
 // Subscribe to changes in the tree state
@@ -991,31 +1002,39 @@ func (tree *Tree) InitializeNodes(dbName string) {
 				return
 			}
 
-			tree.databasesToNodes(tables, node, true)
+			var functions, procedures, views map[string][]string
+			supportsProgramming := tree.DBDriver.SupportsProgramming()
 
-			if tree.DBDriver.SupportsProgramming() {
-				functions, err := tree.DBDriver.GetFunctions(database)
+			if supportsProgramming {
+				functions, err = tree.DBDriver.GetFunctions(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
 
-				procedures, err := tree.DBDriver.GetProcedures(database)
+				procedures, err = tree.DBDriver.GetProcedures(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
 
-				views, err := tree.DBDriver.GetViews(database)
+				views, err = tree.DBDriver.GetViews(database)
 				if err != nil {
 					logger.Error(err.Error(), nil)
 					return
 				}
-
-				tree.addProgrammingNodes(functions, procedures, views, node)
 			}
 
-			App.Draw()
+			// Mutate the tree and redraw on the main goroutine. tview's tree is
+			// not safe to modify while the event loop is drawing it; doing the
+			// AddChild off-thread races the draw and panics with a nil child.
+			App.QueueUpdateDraw(func() {
+				tree.databasesToNodes(tables, node, true)
+
+				if supportsProgramming {
+					tree.addProgrammingNodes(functions, procedures, views, node)
+				}
+			})
 		}(database, childNode)
 	}
 }
@@ -1033,9 +1052,6 @@ func (tree *Tree) flatNodes(database string) {
 			return
 		}
 
-		// Reset the master list so a Refresh doesn't accumulate duplicates.
-		tree.state.flatNodes = nil
-
 		useSchemas := tree.DBDriver.UseSchemas()
 		supportsProgramming := tree.DBDriver.SupportsProgramming()
 
@@ -1050,6 +1066,8 @@ func (tree *Tree) flatNodes(database string) {
 		}
 		multipleSchemas := len(schemaKeys) > 1
 
+		// Build the nodes off-thread; they aren't attached to the live tree yet.
+		nodes := make([]*tview.TreeNode, 0)
 		for _, key := range schemaKeys {
 			values := tables[key]
 			sort.Strings(values)
@@ -1076,20 +1094,31 @@ func (tree *Tree) flatNodes(database string) {
 				node := tview.NewTreeNode(label)
 				node.SetReference(reference)
 				node.SetColor(app.Styles.PrimaryTextColor)
-				rootNode.AddChild(node)
-				tree.state.flatNodes = append(tree.state.flatNodes, node)
+				nodes = append(nodes, node)
 			}
 		}
 
+		// SetSelectedDatabase publishes to subscribers over a blocking channel,
+		// so it must stay off the main goroutine or it deadlocks the event loop.
 		tree.SetSelectedDatabase(database)
 
-		// Root is hidden in flat mode, so point the cursor at the first table
-		// for keyboard navigation once the user leaves search mode.
-		if children := rootNode.GetChildren(); len(children) > 0 {
-			tree.SetCurrentNode(children[0])
-		}
+		// Attach the nodes to the live tree and redraw on the main goroutine.
+		// tview's tree is not safe to mutate while the event loop is drawing it;
+		// doing the AddChild off-thread races the draw and panics with a nil
+		// child.
+		App.QueueUpdateDraw(func() {
+			// Reset the master list so a Refresh doesn't accumulate duplicates.
+			tree.state.flatNodes = nodes
+			for _, node := range nodes {
+				rootNode.AddChild(node)
+			}
 
-		App.Draw()
+			// Root is hidden in flat mode, so point the cursor at the first table
+			// for keyboard navigation once the user leaves search mode.
+			if children := rootNode.GetChildren(); len(children) > 0 {
+				tree.SetCurrentNode(children[0])
+			}
+		})
 	}()
 }
 
@@ -1101,7 +1130,9 @@ func (tree *Tree) Refresh(dbName string) {
 }
 
 func (tree *Tree) ClearSearch() {
-	tree.search("")
+	// search() must run off the main goroutine: in flat mode it redraws via a
+	// queued update, which deadlocks if invoked from a main-goroutine handler.
+	go tree.search("")
 	tree.FoundNodeCountInput.SetText("")
 	tree.SetBorderPadding(0, 0, 0, 0)
 	tree.Filter.SetText("")

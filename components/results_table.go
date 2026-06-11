@@ -2051,16 +2051,10 @@ func (table *ResultsTable) UpdateSidebar() {
 			sidebarWidth := table.getSidebarWidth()
 
 			text := table.GetCell(selectedRow, i-1).Text
-			title := name
-
-			repeatCount := sidebarWidth - len(name) - len(colType) - 4 // idk why 4 is needed, but it works.
-
-			if repeatCount <= 0 {
-				repeatCount = 1
-			}
-
-			title += fmt.Sprintf("[%s]", app.Styles.SidebarTitleBorderColor) + strings.Repeat("-", repeatCount)
-			title += colType
+			// Column name in the default color followed by the type dimmed; the
+			// sidebar renders this as a header line above the value. The name is
+			// kept before the first "[" so it can be recovered via GetTitle.
+			title := name + fmt.Sprintf("[%s] %s", app.Styles.SidebarTitleBorderColor, colType)
 
 			pendingEditExist := false
 

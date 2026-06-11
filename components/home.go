@@ -98,9 +98,9 @@ func NewHomePage(connection models.Connection, dbdriver drivers.Driver) *Home {
 		rightWrapper.SetTitleColor(tcell.ColorLightBlue)
 	}
 
-	// Borders are drawn only on the focused pane (see focusLeftWrapper /
-	// focusRightWrapper). The tree starts focused, so the right pane begins
-	// without a border.
+	// The table list and table detail panes are borderless regardless of focus;
+	// focus is conveyed through highlight colors instead. Only the sidebar keeps
+	// an outer border.
 	rightWrapper.SetBorderColor(app.Styles.PrimaryTextColor)
 	rightWrapper.SetDirection(tview.FlexColumnCSS)
 	rightWrapper.SetInputCapture(home.rightWrapperInputCapture)
@@ -286,7 +286,7 @@ func (home *Home) ShowTableWithFilter(databaseName, tableName, where string) {
 func (home *Home) focusRightWrapper() {
 	home.Tree.RemoveHighlight()
 
-	home.RightWrapper.SetBorder(true)
+	home.RightWrapper.SetBorder(false)
 	home.Tree.Wrapper.SetBorder(false)
 	home.TabbedPane.Highlight()
 	tab := home.TabbedPane.GetCurrentTab()
@@ -333,7 +333,7 @@ func (home *Home) focusLeftWrapper() {
 	home.Tree.Highlight()
 
 	home.RightWrapper.SetBorder(false)
-	home.Tree.Wrapper.SetBorder(true)
+	home.Tree.Wrapper.SetBorder(false)
 
 	tab := home.TabbedPane.GetCurrentTab()
 
