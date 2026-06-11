@@ -23,6 +23,7 @@ type TreeState struct {
 	selectedDatabase      string
 	selectedTable         string
 	searchFoundNodes      []*tview.TreeNode
+	flatNodes             []*tview.TreeNode
 	isFiltering           bool
 }
 
@@ -35,6 +36,7 @@ type Tree struct {
 	FoundNodeCountInput *tview.InputField
 	subscribers         []chan models.StateChange
 	Schemas             []string
+	flat                bool
 }
 
 type TreeNodeType int
@@ -134,9 +136,22 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	tree.SetTopLevel(1)
 	tree.SetGraphicsColor(app.Styles.PrimaryTextColor)
 	// tree.SetBorder(true)
-	tree.SetTitle("Databases")
 	tree.SetTitleAlign(tview.AlignLeft)
 	// tree.SetBorderPadding(0, 0, 1, 1)
+
+	// Flat mode: a single database is targeted, so drop the tree graphics
+	// (no |- connectors) and surface the database/schema as the pane header.
+	if dbName != "" {
+		header := dbName
+		if len(schemas) == 1 {
+			header = fmt.Sprintf("%s.%s", dbName, schemas[0])
+		}
+		tree.flat = true
+		tree.SetGraphics(false)
+		tree.Wrapper.SetTitle(header)
+	} else {
+		tree.Wrapper.SetTitle("Databases")
+	}
 
 	rootNode := tview.NewTreeNode("-")
 	tree.SetRoot(rootNode)
@@ -145,6 +160,14 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	tree.SetFocusFunc(func() {
 		tree.InitializeNodes(dbName)
 		tree.SetFocusFunc(nil)
+
+		// In flat mode the table list is the whole tree, so drop the user
+		// straight into search-table mode when the database opens.
+		if dbName != "" {
+			tree.RemoveHighlight()
+			App.SetFocus(tree.Filter)
+			tree.SetIsFiltering(true)
+		}
 	})
 
 	selectedNodeTextColor := fmt.Sprintf("[black:%s]", app.Styles.SecondaryTextColor.Name())
@@ -292,7 +315,11 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 	tree.Filter.SetPlaceholderStyle(tcell.StyleDefault.Background(app.Styles.PrimitiveBackgroundColor).Foreground(tview.Styles.InverseTextColor))
 	tree.Filter.SetBorderPadding(0, 0, 0, 0)
 	tree.Filter.SetBorderColor(app.Styles.PrimaryTextColor)
-	tree.Filter.SetLabel("Search: ")
+	if tree.flat {
+		tree.Filter.SetLabel("Filter: ")
+	} else {
+		tree.Filter.SetLabel("Search: ")
+	}
 	tree.Filter.SetLabelColor(app.Styles.InverseTextColor)
 
 	tree.Filter.SetFocusFunc(func() {
@@ -575,6 +602,13 @@ func (tree *Tree) search(searchText string) {
 	lowerSearchText := strings.ToLower(searchText)
 	tree.state.searchFoundNodes = []*tview.TreeNode{}
 
+	// In flat mode the filter narrows the visible list to matching tables only,
+	// rather than just highlighting matches within a fixed tree.
+	if tree.flat {
+		tree.filterFlat(lowerSearchText)
+		return
+	}
+
 	if lowerSearchText == "" {
 		rootNode.Walk(func(_, parent *tview.TreeNode) bool {
 			if parent != nil && parent != rootNode && parent.IsExpanded() {
@@ -645,6 +679,59 @@ func (tree *Tree) search(searchText string) {
 		tree.SetCurrentNode(bestNode)
 		tree.state.currentFocusFoundNode = bestNode
 	}
+}
+
+// filterFlat rebuilds the flat table list so only tables matching the filter
+// text remain visible, ranked best-match first. An empty filter restores the
+// full list.
+func (tree *Tree) filterFlat(lowerSearchText string) {
+	rootNode := tree.GetRoot()
+	rootNode.ClearChildren()
+
+	if lowerSearchText == "" {
+		for _, node := range tree.state.flatNodes {
+			rootNode.AddChild(node)
+		}
+		if children := rootNode.GetChildren(); len(children) > 0 {
+			tree.SetCurrentNode(children[0])
+		}
+		App.Draw()
+		return
+	}
+
+	type rankedNode struct {
+		node *tview.TreeNode
+		rank int
+	}
+	var rankedNodes []rankedNode
+
+	for _, node := range tree.state.flatNodes {
+		nodeText := strings.ToLower(stripColorTags(node.GetText()))
+		rank := fuzzy.RankMatch(lowerSearchText, nodeText)
+		if rank >= 0 {
+			rankedNodes = append(rankedNodes, rankedNode{
+				node: node,
+				rank: prioritizeResult(lowerSearchText, nodeText, rank),
+			})
+		}
+	}
+
+	sort.Slice(rankedNodes, func(i, j int) bool {
+		return rankedNodes[i].rank < rankedNodes[j].rank
+	})
+
+	for _, rn := range rankedNodes {
+		rootNode.AddChild(rn.node)
+		tree.state.searchFoundNodes = append(tree.state.searchFoundNodes, rn.node)
+	}
+
+	if len(tree.state.searchFoundNodes) > 0 {
+		bestNode := tree.state.searchFoundNodes[0]
+		tree.SetCurrentNode(bestNode)
+		tree.state.currentFocusFoundNode = bestNode
+	}
+
+	App.Draw()
 }
 
 // Subscribe to changes in the tree state
@@ -728,10 +815,15 @@ func (tree *Tree) RemoveHighlight() {
 
 	childrens := tree.GetRoot().GetChildren()
 
+	var currentRef interface{}
+	if currentNode := tree.GetCurrentNode(); currentNode != nil {
+		currentRef = currentNode.GetReference()
+	}
+
 	for _, children := range childrens {
 		currentColor := children.GetColor()
 
-		childrenIsCurrentNode := children.GetReference() == tree.GetCurrentNode().GetReference()
+		childrenIsCurrentNode := children.GetReference() == currentRef
 
 		if !childrenIsCurrentNode && currentColor == app.Styles.PrimaryTextColor {
 			children.SetColor(app.Styles.InverseTextColor)
@@ -742,7 +834,7 @@ func (tree *Tree) RemoveHighlight() {
 		for _, children := range childrenOfChildren {
 			currentColor := children.GetColor()
 
-			childrenIsCurrentNode := children.GetReference() == tree.GetCurrentNode().GetReference()
+			childrenIsCurrentNode := children.GetReference() == currentRef
 
 			if !childrenIsCurrentNode && currentColor == app.Styles.PrimaryTextColor {
 				children.SetColor(app.Styles.InverseTextColor)
@@ -868,21 +960,21 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		panic("Internal Error: No tree root")
 	}
 
-	var databases []string
+	// When the connection targets a specific database, skip the
+	// database/schema accordion entirely and list its tables as a flat,
+	// first-level list. The database/schema is shown as the pane header.
+	if dbName != "" {
+		tree.flatNodes(sanitizeDBName(dbName))
+		return
+	}
 
-	if dbName == "" {
-		dbs, err := tree.DBDriver.GetDatabases()
-		if err != nil {
-			panic(err.Error())
-		}
-		sanitizedDbs := make([]string, 0, len(dbs))
-		for _, db := range dbs {
-			sanitizedDbs = append(sanitizedDbs, sanitizeDBName(db))
-		}
-		databases = sanitizedDbs
-	} else {
-		sanitizedDBName := sanitizeDBName(dbName)
-		databases = []string{sanitizedDBName}
+	dbs, err := tree.DBDriver.GetDatabases()
+	if err != nil {
+		panic(err.Error())
+	}
+	databases := make([]string, 0, len(dbs))
+	for _, db := range dbs {
+		databases = append(databases, sanitizeDBName(db))
 	}
 
 	for _, database := range databases {
@@ -926,6 +1018,79 @@ func (tree *Tree) InitializeNodes(dbName string) {
 			App.Draw()
 		}(database, childNode)
 	}
+}
+
+// flatNodes lists the tables of a single database as direct children of the
+// root, with no database/schema parent nodes. References keep the same
+// dot-notation format the accordion uses so selection behaves identically.
+func (tree *Tree) flatNodes(database string) {
+	rootNode := tree.GetRoot()
+
+	go func() {
+		tables, err := tree.DBDriver.GetTables(database)
+		if err != nil {
+			logger.Error(err.Error(), nil)
+			return
+		}
+
+		// Reset the master list so a Refresh doesn't accumulate duplicates.
+		tree.state.flatNodes = nil
+
+		useSchemas := tree.DBDriver.UseSchemas()
+		supportsProgramming := tree.DBDriver.SupportsProgramming()
+
+		// Collect the schema keys that survive the optional schema filter so we
+		// know whether to disambiguate table labels with a schema prefix.
+		schemaKeys := make([]string, 0, len(tables))
+		for _, key := range slices.Sorted(maps.Keys(tables)) {
+			if len(tree.Schemas) > 0 && useSchemas && !slices.Contains(tree.Schemas, key) {
+				continue
+			}
+			schemaKeys = append(schemaKeys, key)
+		}
+		multipleSchemas := len(schemaKeys) > 1
+
+		for _, key := range schemaKeys {
+			values := tables[key]
+			sort.Strings(values)
+
+			for _, table := range values {
+				var reference, label string
+				switch {
+				case useSchemas && supportsProgramming:
+					reference = fmt.Sprintf("%s.%s.tables.%s", database, key, table)
+				case useSchemas:
+					reference = fmt.Sprintf("%s.%s.%s", database, key, table)
+				case supportsProgramming:
+					reference = fmt.Sprintf("%s.tables.%s", key, table)
+				default:
+					reference = fmt.Sprintf("%s.%s", key, table)
+				}
+
+				if useSchemas && multipleSchemas {
+					label = fmt.Sprintf("%s.%s", key, table)
+				} else {
+					label = table
+				}
+
+				node := tview.NewTreeNode(label)
+				node.SetReference(reference)
+				node.SetColor(app.Styles.PrimaryTextColor)
+				rootNode.AddChild(node)
+				tree.state.flatNodes = append(tree.state.flatNodes, node)
+			}
+		}
+
+		tree.SetSelectedDatabase(database)
+
+		// Root is hidden in flat mode, so point the cursor at the first table
+		// for keyboard navigation once the user leaves search mode.
+		if children := rootNode.GetChildren(); len(children) > 0 {
+			tree.SetCurrentNode(children[0])
+		}
+
+		App.Draw()
+	}()
 }
 
 func (tree *Tree) Refresh(dbName string) {
