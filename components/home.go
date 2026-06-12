@@ -137,6 +137,17 @@ func (home *Home) subscribeToTreeChanges() {
 			tableName := stateChange.Value.(string)
 
 			home.showTable(databaseName, tableName)
+		case eventTreeError:
+			message := stateChange.Value.(string)
+			App.QueueUpdateDraw(func() {
+				errorModal := tview.NewModal().
+					SetText(message).
+					AddButtons([]string{"OK"}).
+					SetDoneFunc(func(_ int, _ string) {
+						mainPages.RemovePage(pageNameErrorModal)
+					})
+				mainPages.AddPage(pageNameErrorModal, errorModal, true, true)
+			})
 		case eventTreeIsFiltering:
 			isFiltering := stateChange.Value.(bool)
 			if isFiltering {

@@ -23,10 +23,6 @@ type Postgres struct {
 	Urlstr           string
 }
 
-const (
-	defaultPort = "5432"
-)
-
 func (db *Postgres) TestConnection(urlstr string) error {
 	return db.Connect(urlstr)
 }
@@ -770,20 +766,21 @@ func (db *Postgres) connectToDatabase(database string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	user := parsedConn.User.Username()
-	password, hasPassword := parsedConn.User.Password()
-	host := parsedConn.Hostname()
-	port := parsedConn.Port()
-	if port == "" {
-		port = defaultPort
+	// PostgreSQL can't switch databases on a live connection, so each
+	// non-current database needs its own connection. Build it from the
+	// original URL and swap only the target database, preserving every other
+	// connection parameter (sslmode, search_path, application_name, etc.).
+	// Rebuilding a minimal DSN here would force sslmode=disable and drop the
+	// rest, making the reconnect fail silently on SSL-only servers.
+	u := parsedConn.URL
+	u.Path = "/" + database
+
+	reparsed, err := dburl.Parse(u.String())
+	if err != nil {
+		return nil, err
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable", host, port, user, database)
-	if hasPassword {
-		dsn += fmt.Sprintf(" password=%s", password)
-	}
-
-	conn, err := sql.Open("postgres", dsn)
+	conn, err := sql.Open(reparsed.Driver, reparsed.DSN)
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/lithammer/fuzzysearch/fuzzy"
@@ -37,6 +38,13 @@ type Tree struct {
 	subscribers         []chan models.StateChange
 	Schemas             []string
 	flat                bool
+
+	// loadErrors records, per database, the error hit while loading its tables
+	// in the background so it can be surfaced when the user selects that
+	// database instead of leaving the node silently empty. Guarded by its mutex
+	// because the loader goroutines write while the event loop reads.
+	loadErrors   map[string]string
+	loadErrorsMu sync.Mutex
 }
 
 type TreeNodeType int
@@ -131,6 +139,7 @@ func NewTree(dbName string, dbdriver drivers.Driver, schemas []string) *Tree {
 		Filter:              tview.NewInputField(),
 		FoundNodeCountInput: tview.NewInputField(),
 		Schemas:             schemas,
+		loadErrors:          make(map[string]string),
 	}
 
 	tree.SetTopLevel(1)
@@ -327,6 +336,16 @@ func (tree *Tree) selectNode(node *tview.TreeNode) {
 		if node.IsExpanded() {
 			node.SetExpanded(false)
 		} else {
+			// A database whose tables failed to load in the background has no
+			// children, so expanding it would look like nothing happened.
+			// Surface the recorded error instead.
+			if msg, failed := tree.loadErrorFor(nodeData.Database); failed {
+				tree.Publish(models.StateChange{
+					Key:   eventTreeError,
+					Value: fmt.Sprintf("Could not open database %q:\n\n%s", nodeData.Database, msg),
+				})
+				return
+			}
 			tree.SetSelectedDatabase(nodeData.Database)
 			node.SetExpanded(true)
 		}
@@ -1008,7 +1027,7 @@ func (tree *Tree) InitializeNodes(dbName string) {
 		go func(database string, node *tview.TreeNode) {
 			tables, err := tree.DBDriver.GetTables(database)
 			if err != nil {
-				logger.Error(err.Error(), nil)
+				tree.recordLoadError(database, node, err)
 				return
 			}
 
@@ -1018,19 +1037,19 @@ func (tree *Tree) InitializeNodes(dbName string) {
 			if supportsProgramming {
 				functions, err = tree.DBDriver.GetFunctions(database)
 				if err != nil {
-					logger.Error(err.Error(), nil)
+					tree.recordLoadError(database, node, err)
 					return
 				}
 
 				procedures, err = tree.DBDriver.GetProcedures(database)
 				if err != nil {
-					logger.Error(err.Error(), nil)
+					tree.recordLoadError(database, node, err)
 					return
 				}
 
 				views, err = tree.DBDriver.GetViews(database)
 				if err != nil {
-					logger.Error(err.Error(), nil)
+					tree.recordLoadError(database, node, err)
 					return
 				}
 			}
@@ -1047,6 +1066,29 @@ func (tree *Tree) InitializeNodes(dbName string) {
 			})
 		}(database, childNode)
 	}
+}
+
+// recordLoadError remembers why a database failed to load and tints its node so
+// the failure is visible instead of presenting as a silently empty node. The
+// message is surfaced when the user selects the database (see selectNode).
+func (tree *Tree) recordLoadError(database string, node *tview.TreeNode, err error) {
+	logger.Error(err.Error(), map[string]any{"database": database})
+
+	tree.loadErrorsMu.Lock()
+	tree.loadErrors[database] = err.Error()
+	tree.loadErrorsMu.Unlock()
+
+	App.QueueUpdateDraw(func() {
+		node.SetColor(tcell.ColorRed)
+	})
+}
+
+// loadErrorFor returns the recorded load error for a database, if any.
+func (tree *Tree) loadErrorFor(database string) (string, bool) {
+	tree.loadErrorsMu.Lock()
+	defer tree.loadErrorsMu.Unlock()
+	msg, ok := tree.loadErrors[database]
+	return msg, ok
 }
 
 // flatNodes lists the tables of a single database as direct children of the

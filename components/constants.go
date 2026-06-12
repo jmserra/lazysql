@@ -75,6 +75,7 @@ const (
 	eventTreeSelectedProcedure string = "SelectedProcedure"
 	eventTreeSelectedView      string = "SelectedView"
 	eventTreeIsFiltering       string = "IsFiltering"
+	eventTreeError             string = "TreeError"
 )
 
 // Results table menu items
